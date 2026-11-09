@@ -1,0 +1,39 @@
+
+
+# 2. Saari main project files ko us folder mein copy karein
+cp -r app tests cloudbuild.yaml Dockerfile requirements.txt README.md cicd_deployment_bundle/
+
+# 3. Ek comprehensive deployment script banayein jisme saari successful commands hon
+cat << 'EOF' > cicd_deployment_bundle/run_all_commands.sh
+#!/bin/bash
+# ==========================================
+# CICD Successful Deployment & Setup Commands
+# Project ID: project-fff88c03-dbb0-49b5-994
+# Region: asia-south1 (Mumbai)
+# ==========================================
+
+echo "Step 1: Setting up BigQuery Dataset in asia-south1..."
+bq --location=asia-south1 mk --dataset project-fff88c03-dbb0-49b5-994:cicd_metrics || echo "Dataset already exists."
+
+echo "Step 2: Creating Build Logs Table in BigQuery..."
+bq --location=asia-south1 query --use_legacy_sql=false \
+"CREATE TABLE IF NOT EXISTS \`project-fff88c03-dbb0-49b5-994.cicd_metrics.build_logs\` (
+    build_id STRING,
+    status STRING,
+    build_time TIMESTAMP,
+    duration STRING,
+    trigger_id STRING
+);"
+
+echo "Step 3: Submitting Cloud Build (Tests, Docker build, Push & Cloud Run Deploy)..."
+gcloud builds submit --config cloudbuild.yaml .
+
+echo "Step 4: Verifying Build Logs in BigQuery..."
+bq --location=asia-south1 query --use_legacy_sql=false \
+"SELECT status, COUNT(*) as count FROM \`project-fff88c03-dbb0-49b5-994.cicd_metrics.build_logs\` GROUP BY status"
+
+echo "All steps completed successfully!"
+EOF
+
+# 4. Script ko executable permission dein
+chmod +x cicd_deployment_bundle/run_all_commands.sh
