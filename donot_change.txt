@@ -1,0 +1,38 @@
+cd ~/agentic-cicd
+cat << 'EOF' > README.md
+# Agentic CI/CD Pipeline & Metrics Tracking
+
+This project implements an automated CI/CD pipeline using Google Cloud Build, Cloud Run, and BigQuery for tracking build metrics and logs.
+
+## Project Structure
+- `app/`: Application source code and routes.
+- `tests/`: Pytest test suite (`test_main.py`, etc.).
+- `cloudbuild.yaml`: Google Cloud Build configuration file defining the build, test, container push, and deployment steps.
+- `fault_injection.py`: Script to inject test failures and test resilience/metrics logging.
+- `requirements.txt`: Python package dependencies.
+
+---
+
+## Current Status & Progress (Where to Resume)
+
+1. **Cloud Run Deployment:** Successfully deployed and serving traffic at:
+   `https://agentic-cicd-service-803434570059.asia-south1.run.app`
+
+2. **BigQuery Integration:** 
+   - Dataset `cicd_metrics` created in region `asia-south1`.
+   - Table `build_logs` configured to track build status, timestamps, and durations.
+   - Cloud Build permissions (`BigQuery Job User` & `BigQuery Data Editor`) granted to the default/cloud build service accounts.
+
+3. **CI/CD Pipeline Step:** 
+   - Step 0: Pytest test execution (clean test suite).
+   - Step 1 & 2: Docker image build and push to Container Registry (`gcr.io`).
+   - Step 3: Cloud Run deployment in `asia-south1`.
+   - Step 4: Automated BigQuery log insertion upon build completion.
+
+---
+
+## How to Resume from Here (Next Steps)
+
+1. **Navigate to project directory:**
+   ```bash
+   cd ~/agentic-cicd
