@@ -1,5 +1,5 @@
 steps:
-  # 1. Install dependencies AND run Pytest tests in the exact same container step
+  # 1. Install dependencies AND run Pytest tests
   - name: 'python:3.10'
     entrypoint: 'bash'
     args:
@@ -13,11 +13,11 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/agentic-cicd-app:latest', '.']
 
-  # 3. Push the Docker image to Container Registry
+  # 3. Push the Docker image to Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/agentic-cicd-app:latest']
 
-  # 4. Deploy to Cloud Run
+  # 4. Deploy to Cloud Run (Mumbai Region)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
       - 'gcloud'
@@ -25,9 +25,19 @@ steps:
       - 'deploy'
       - 'agentic-cicd-service'
       - '--image=gcr.io/$PROJECT_ID/agentic-cicd-app:latest'
-      - '--region=us-central1'
+      - '--region=asia-south1'
       - '--platform=managed'
       - '--allow-unauthenticated'
+
+  # 5. Log Build directly to BigQuery (Mumbai Dataset)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq --location=asia-south1 query --use_legacy_sql=false \
+        "INSERT INTO \`$PROJECT_ID.cicd_metrics.build_logs\` (build_id, status, build_time, duration, trigger_id) 
+         VALUES ('$BUILD_ID', 'SUCCESS', CURRENT_TIMESTAMP(), '120s', 'manual-trigger')"
 
 images:
   - 'gcr.io/$PROJECT_ID/agentic-cicd-app:latest'
