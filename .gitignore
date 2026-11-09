@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
+.env
+# never commit cloud credentials
+*-key.json
+credentials*.json
+service-account*.json
+# large local data/models (keep them in Cloud Storage)
+*.joblib
+data/raw/
