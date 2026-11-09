@@ -15,4 +15,4 @@ COPY . .
 EXPOSE 8080
 
 # Command to run the application
-CMD ["python", "app/main.py"]
+CMD ["python", "app/wsgi.py"]
