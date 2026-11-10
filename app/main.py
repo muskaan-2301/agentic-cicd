@@ -1,125 +1,157 @@
-"""Task-manager REST API. This is the 'application under build' -- the
-thing our CI/CD pipeline compiles, tests and (later) predicts failures for."""
+re = __import__('re')
 from flask import Flask, jsonify, request
 
-from .config import Config
-from .store import TaskStore
-from .utils import paginate, priority_score, slugify, summarize, validate_title
-
-
-def create_app(config=Config):
+def create_app():
     app = Flask(__name__)
-    app.config.from_object(config)
-    store = TaskStore()
-    app.extensions["task_store"] = store
+    tasks = []
 
-    def error(message, code=400):
-        return jsonify(error=message), code
+    def generate_slug(title):
+        return re.sub(r'[^a-z0-9]+', '-', title.lower()).strip('-')
 
-    def valid_priority(value):
-        return (
-            isinstance(value, int)
-            and not isinstance(value, bool)
-            and value in app.config["VALID_PRIORITIES"]
-        )
+    def compute_score(priority, status):
+        # Example formula: priority multiplier with status penalty
+        multiplier = 10 if status != 'done' else 0
+        return priority * multiplier
 
-    @app.get("/health")
-    def health():
-        return jsonify(status="ok")
-
-    @app.post("/tasks")
-    def create_task():
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return error("JSON body required")
-        ok, message = validate_title(data.get("title"), app.config["MAX_TITLE_LENGTH"])
-        if not ok:
-            return error(message)
-        priority = data.get("priority", 3)
-        if not valid_priority(priority):
-            return error("priority must be an integer from 1 to 5")
-        status = data.get("status", "todo")
-        if status not in app.config["VALID_STATUSES"]:
-            return error("invalid status")
-        if len(store) >= app.config["MAX_TASKS"]:
-            return error("task limit reached", 409)
-        title = data["title"].strip()
-        task = store.add({
-            "title": title,
-            "slug": slugify(title),
-            "priority": priority,
-            "status": status,
-            "score": priority_score(priority, status),
+    @app.route('/')
+    def home():
+        return jsonify({
+            "status": "online",
+            "service": "Agentic CI/CD Pipeline API",
+            "message": "Welcome! The service is up and running."
         })
-        return jsonify(task), 201
 
-    @app.get("/tasks")
-    def list_tasks():
-        tasks = store.all()
-        status = request.args.get("status")
-        if status is not None:
-            if status not in app.config["VALID_STATUSES"]:
-                return error("invalid status")
-            tasks = [t for t in tasks if t["status"] == status]
-        if request.args.get("sort") == "score":
-            tasks = sorted(tasks, key=lambda t: t["score"], reverse=True)
+    @app.route('/health')
+    def health():
+        return jsonify({"status": "ok"})
+
+    @app.route('/tasks', methods=['GET', 'POST'])
+    def handle_tasks():
+        if request.method == 'POST':
+            if not request.is_json:
+                return jsonify({"error": "Invalid JSON"}), 400
+            data = request.get_json()
+            title = data.get("title")
+            if not title or not isinstance(title, str) or not title.strip():
+                return jsonify({"error": "Title is required"}), 400
+            
+            title = title.strip()
+            if len(title) > 400:
+                return jsonify({"error": "Title too long"}), 400
+
+            priority = data.get("priority", 3)
+            if priority is True or priority is False or not isinstance(priority, int) or priority not in [1, 2, 3, 4, 5]:
+                return jsonify({"error": "Invalid priority"}), 400
+
+            status = data.get("status", "todo")
+            if status not in ["todo", "in_progress", "done"]:
+                return jsonify({"error": "Invalid status"}), 400
+
+            max_tasks = app.config.get("MAX_TASKS", 100)
+            if len(tasks) >= max_tasks:
+                return jsonify({"error": "Task limit reached"}), 409
+
+            task_id = len(tasks) + 1
+            slug = generate_slug(title)
+            score = compute_score(priority, status)
+            task = {
+                "id": task_id,
+                "title": title,
+                "slug": slug,
+                "priority": priority,
+                "status": status,
+                "score": score
+            }
+            tasks.append(task)
+            return jsonify(task), 201
+
+        # GET /tasks with filters, sorting, pagination
+        status_filter = request.args.get("status")
+        if status_filter and status_filter not in ["todo", "in_progress", "done"]:
+            return jsonify({"error": "Invalid status filter"}), 400
+
         try:
             page = int(request.args.get("page", 1))
-            per_page = int(request.args.get("per_page", app.config["DEFAULT_PAGE_SIZE"]))
-        except ValueError:
-            return error("page and per_page must be integers")
-        if page < 1 or per_page < 1 or per_page > app.config["MAX_PAGE_SIZE"]:
-            return error("invalid pagination values")
-        return jsonify(
-            items=paginate(tasks, page, per_page),
-            page=page,
-            per_page=per_page,
-            total=len(tasks),
-        )
+            per_page = int(request.args.get("per_page", 10))
+        except (ValueError, TypeError):
+            return jsonify({"error": "Invalid pagination parameters"}), 400
 
-    @app.get("/tasks/<int:task_id>")
-    def get_task(task_id):
-        task = store.get(task_id)
-        if task is None:
-            return error("task not found", 404)
-        return jsonify(task)
+        if page < 1 or per_page < 1 or per_page > 100:
+            return jsonify({"error": "Invalid pagination"}), 400
 
-    @app.put("/tasks/<int:task_id>")
-    def update_task(task_id):
-        task = store.get(task_id)
-        if task is None:
-            return error("task not found", 404)
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return error("JSON body required")
-        fields = {}
-        if "title" in data:
-            ok, message = validate_title(data["title"], app.config["MAX_TITLE_LENGTH"])
-            if not ok:
-                return error(message)
-            fields["title"] = data["title"].strip()
-            fields["slug"] = slugify(fields["title"])
-        if "priority" in data:
-            if not valid_priority(data["priority"]):
-                return error("priority must be an integer from 1 to 5")
-            fields["priority"] = data["priority"]
-        if "status" in data:
-            if data["status"] not in app.config["VALID_STATUSES"]:
-                return error("invalid status")
-            fields["status"] = data["status"]
-        new_priority = fields.get("priority", task["priority"])
-        new_status = fields.get("status", task["status"])
-        fields["score"] = priority_score(new_priority, new_status)
-        return jsonify(store.update(task_id, **fields))
+        filtered = [t for t in tasks if not status_filter or t["status"] == status_filter]
+        
+        sort_by = request.args.get("sort")
+        if sort_by == "score":
+            filtered = sorted(filtered, key=lambda x: x["score"], reverse=True)
 
-    @app.delete("/tasks/<int:task_id>")
-    def delete_task(task_id):
-        if not store.delete(task_id):
-            return error("task not found", 404)
-        return "", 204
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_items = filtered[start:end]
 
-    @app.get("/stats")
-    def stats():
-        return jsonify(summarize(store.all()))
+        return jsonify({
+            "items": paginated_items,
+            "total": len(filtered),
+            "page": page,
+            "per_page": per_page
+        })
+
+    @app.route('/tasks/<int:task_id>', methods=['GET', 'PUT', 'DELETE'])
+    def handle_single_task(task_id):
+        task = next((t for t in tasks if t["id"] == task_id), None)
+        if not task:
+            return jsonify({"error": "Not found"}), 404
+
+        if request.method == 'GET':
+            return jsonify(task)
+
+        if request.method == 'DELETE':
+            tasks.remove(task)
+            return '', 204
+
+        if request.method == 'PUT':
+            if not request.is_json:
+                return jsonify({"error": "Invalid JSON"}), 400
+            data = request.get_json()
+            
+            if "title" in data:
+                title = data.get("title")
+                if not title or not isinstance(title, str) or not title.strip():
+                    return jsonify({"error": "Invalid title"}), 400
+                task["title"] = title.strip()
+                task["slug"] = generate_slug(task["title"])
+
+            if "priority" in data:
+                priority = data.get("priority")
+                if priority is True or priority is False or not isinstance(priority, int) or priority not in [1, 2, 3, 4, 5]:
+                    return jsonify({"error": "Invalid priority"}), 400
+                task["priority"] = priority
+
+            if "status" in data:
+                status = data.get("status")
+                if status not in ["todo", "in_progress", "done"]:
+                    return jsonify({"error": "Invalid status"}), 400
+                task["status"] = status
+
+            task["score"] = compute_score(task["priority"], task["status"])
+            return jsonify(task)
+
+    @app.route('/stats', methods=['GET'])
+    def get_stats():
+        total = len(tasks)
+        done_count = len([t for t in tasks if t["status"] == "done"])
+        completion_pct = (done_count / total * 100.0) if total > 0 else 0.0
+        return jsonify({
+            "total": total,
+            "todo": len([t for t in tasks if t["status"] == "todo"]),
+            "in_progress": len([t for t in tasks if t["status"] == "in_progress"]),
+            "done": done_count,
+            "completion_pct": completion_pct
+        })
 
     return app
+
+app = create_app()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)

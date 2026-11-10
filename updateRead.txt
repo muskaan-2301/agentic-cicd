@@ -1,0 +1,37 @@
+# Agentic CI/CD Pipeline & Metrics Tracking
+
+This project implements an autonomous, agentic CI/CD pipeline built on **Google Cloud Platform (GCP)**. Traditional CI/CD pipelines fail rigidly upon encountering errors, requiring manual intervention. This system introduces an intelligent agentic layer capable of predicting build risks, performing automated root cause diagnostics via **Gemini (Vertex AI)**, executing safe remediation actions with strict guardrails, and logging telemetry metrics to **BigQuery**.
+
+---
+
+## 🚀 Key Features & Architecture
+
+1. **Intelligent Predictor (`app/predictor.py`)**: 
+   - Evaluates build duration and historical failure rates to compute a risk score and predict build outcomes (`PASS`/`FAIL`) before full execution.
+2. **AI-Powered Root Cause Diagnoser (`app/diagnoser.py`)**: 
+   - Utilizes the Google GenAI SDK (`gemini-2.5-flash`) via Vertex AI to parse CI/CD build error logs and generate automated root cause summaries.
+3. **Automated Remediator with Guardrails (`app/remediator.py`)**: 
+   - Automatically determines remediation actions (`RETRY`, `SCALE_UP`, `NOTIFY_ONLY`) based on diagnosis and enforces safety guardrails (such as a maximum retry limit of 3 to prevent infinite loops).
+4. **Alerting & Notification Module (`app/notifier.py`)**: 
+   - Broadcasts real-time alerts for critical build outcomes and remediation actions.
+5. **Evaluation & Telemetry (`app/evaluator.py` & BigQuery)**: 
+   - Compares agentic pipeline performance against baseline pipelines, showing significant reduction in MTTR (Mean Time To Recovery).
+   - Tracks metrics in BigQuery (`cicd_metrics.build_logs`).
+
+---
+
+## 📂 Project Structure
+
+- `app/`: Application source code, API routes, predictor, diagnoser, remediator, and notifier modules.
+- `tests/`: Comprehensive test suite (`test_predictor.py`, `test_diagnoser.py`, `test_remediator.py`, `test_notifier.py`, `test_evaluator.py`, etc.) verified via `pytest`.
+- `cloudbuild.yaml`: Google Cloud Build configuration file defining the build, test, container push, and deployment steps.
+- `Dockerfile` & `wsgi.py`: Containerization configuration and entrypoints for deployment.
+- `requirements.txt`: Python dependencies (`google-genai`, `pytest`, etc.).
+
+---
+
+## 🛠️ Setup & Local Testing
+
+1. **Clone the repository and enter the directory:**
+   ```bash
+   cd ~/agentic-cicd
